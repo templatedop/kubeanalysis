@@ -1,0 +1,203 @@
+version: '3.8'
+
+services:
+  # KubeAnalysis Worker
+  kubeanalysis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${VERSION:-dev}
+    image: kubeanalysis:${VERSION:-dev}
+    container_name: kubeanalysis
+    command: ["worker", "-c", "/config/config.yaml"]
+    ports:
+      - "8080:8080"
+    environment:
+      - TEMPORAL_HOST=temporal:7233
+      - LLM_BASE_URL=http://ollama:11434
+      - EMBEDDER_BASE_URL=http://ollama:11434
+    volumes:
+      - ./config.yaml:/config/config.yaml:ro
+      - ./knowledge:/app/knowledge:ro
+      - ${KUBECONFIG:-~/.kube/config}:/home/kubeanalysis/.kube/config:ro
+    depends_on:
+      temporal:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - kubeanalysis-net
+    restart: unless-stopped
+
+  # Temporal Server (Development)
+  temporal:
+    image: temporalio/auto-setup:1.22
+    container_name: temporal
+    ports:
+      - "7233:7233"
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=temporal-db
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development.yaml
+    depends_on:
+      temporal-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "temporal", "workflow", "list", "--namespace", "default"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - kubeanalysis-net
+    restart: unless-stopped
+
+  # Temporal Admin Tools
+  temporal-admin-tools:
+    image: temporalio/admin-tools:1.22
+    container_name: temporal-admin-tools
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CLI_ADDRESS=temporal:7233
+    depends_on:
+      - temporal
+    stdin_open: true
+    tty: true
+    networks:
+      - kubeanalysis-net
+
+  # Temporal UI
+  temporal-ui:
+    image: temporalio/ui:2.21.3
+    container_name: temporal-ui
+    ports:
+      - "8088:8080"
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    depends_on:
+      - temporal
+    networks:
+      - kubeanalysis-net
+    restart: unless-stopped
+
+  # Temporal PostgreSQL Database
+  temporal-db:
+    image: postgres:15-alpine
+    container_name: temporal-db
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    volumes:
+      - temporal-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kubeanalysis-net
+    restart: unless-stopped
+
+  # Vector Store PostgreSQL (with pgvector)
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: kubeanalysis-postgres
+    environment:
+      POSTGRES_USER: kubeanalysis
+      POSTGRES_PASSWORD: kubeanalysis
+      POSTGRES_DB: kubeanalysis
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./deploy/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kubeanalysis"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kubeanalysis-net
+    restart: unless-stopped
+
+  # Ollama LLM Server
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    # Uncomment for GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    networks:
+      - kubeanalysis-net
+    restart: unless-stopped
+
+  # Prometheus (for metrics)
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - kubeanalysis-net
+    restart: unless-stopped
+
+  # Grafana (for dashboards)
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - kubeanalysis-net
+    restart: unless-stopped
+
+volumes:
+  temporal-db-data:
+  postgres-data:
+  ollama-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  kubeanalysis-net:
+    driver: bridge

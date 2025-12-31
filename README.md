@@ -429,9 +429,125 @@ srv.StartWithGracefulShutdown()
 4. Drain existing connections
 5. Exit cleanly
 
-## Kubernetes Deployment
+## Deployment
 
-### Example Deployment
+KubeAnalysis supports multiple deployment strategies for different environments.
+
+### Docker
+
+Build and run locally with Docker:
+
+```bash
+# Build the image
+docker build -t kubeanalysis:latest .
+
+# Run with Docker
+docker run -d \
+  --name kubeanalysis \
+  -p 8080:8080 \
+  -v ~/.kube/config:/home/kubeanalysis/.kube/config:ro \
+  -v ./config.yaml:/config/config.yaml:ro \
+  kubeanalysis:latest worker -c /config/config.yaml
+```
+
+### Docker Compose (Local Development)
+
+The easiest way to get started with a complete development environment:
+
+```bash
+# Start all services (KubeAnalysis, Temporal, PostgreSQL, Ollama, Prometheus, Grafana)
+docker-compose up -d
+
+# View logs
+docker-compose logs -f kubeanalysis
+
+# Stop all services
+docker-compose down
+```
+
+Services included:
+- **KubeAnalysis** - Main application (port 8080)
+- **Temporal** - Workflow orchestration (port 7233)
+- **Temporal UI** - Workflow management UI (port 8088)
+- **PostgreSQL** - Vector store with pgvector (port 5432)
+- **Ollama** - Local LLM server (port 11434)
+- **Prometheus** - Metrics collection (port 9090)
+- **Grafana** - Dashboards (port 3000, admin/admin)
+
+Pull LLM models after starting:
+
+```bash
+# Pull the LLM model
+docker exec -it ollama ollama pull qwen2.5:32b
+
+# Pull the embedding model
+docker exec -it ollama ollama pull nomic-embed-text
+```
+
+### Helm Chart
+
+For production Kubernetes deployments:
+
+```bash
+# Add the Helm repository (when published)
+helm repo add kubeanalysis https://kubeanalysis.github.io/charts
+
+# Install with default values
+helm install kubeanalysis kubeanalysis/kubeanalysis
+
+# Install with custom values
+helm install kubeanalysis kubeanalysis/kubeanalysis \
+  --namespace kubeanalysis \
+  --create-namespace \
+  --set replicaCount=3 \
+  --set config.temporal.host=temporal:7233 \
+  --set config.llm.provider=openai \
+  --set secrets.llmApiKey=$OPENAI_API_KEY
+
+# Install from local chart
+helm install kubeanalysis ./deploy/helm/kubeanalysis -f values-production.yaml
+```
+
+Key Helm values:
+
+| Value | Description | Default |
+|-------|-------------|---------|
+| `replicaCount` | Number of replicas | 2 |
+| `config.temporal.host` | Temporal server address | temporal-frontend:7233 |
+| `config.llm.provider` | LLM provider | ollama |
+| `config.llm.model` | LLM model name | qwen2.5:32b |
+| `vectorStore.type` | Vector store type | memory |
+| `postgresql.enabled` | Enable PostgreSQL | false |
+| `autoscaling.enabled` | Enable HPA | true |
+| `serviceMonitor.enabled` | Enable Prometheus ServiceMonitor | false |
+
+### Kustomize
+
+For GitOps-style deployments:
+
+```bash
+# Deploy to development
+kubectl apply -k deploy/kustomize/overlays/dev
+
+# Deploy to staging
+kubectl apply -k deploy/kustomize/overlays/staging
+
+# Deploy to production
+kubectl apply -k deploy/kustomize/overlays/production
+
+# Preview changes
+kubectl diff -k deploy/kustomize/overlays/production
+```
+
+Environment differences:
+
+| Environment | Replicas | CPU Limit | Memory Limit | Features |
+|-------------|----------|-----------|--------------|----------|
+| dev | 1 | 500m | 512Mi | Debug logging |
+| staging | 2 | 1000m | 1Gi | Standard |
+| production | 3 | 2000m | 2Gi | NetworkPolicy, ServiceMonitor |
+
+### Manual Kubernetes Deployment
 
 ```yaml
 apiVersion: apps/v1
@@ -444,7 +560,7 @@ spec:
     spec:
       containers:
       - name: kubeanalysis
-        image: kubeanalysis:latest
+        image: ghcr.io/kubeanalysis/kubeanalysis:latest
         args: ["worker", "-c", "/config/config.yaml"]
         ports:
         - containerPort: 8080
@@ -486,13 +602,55 @@ spec:
     interval: 30s
 ```
 
+## CI/CD
+
+The project includes GitHub Actions workflows for continuous integration and releases.
+
+### CI Pipeline (`.github/workflows/ci.yaml`)
+
+Runs on every push and PR:
+- **Lint**: golangci-lint
+- **Test**: Unit tests with coverage
+- **Build**: Binary and Docker image
+- **Helm Lint**: Validate Helm chart
+- **Kustomize Validate**: Validate all overlays
+
+### Release Pipeline (`.github/workflows/release.yaml`)
+
+Triggered on version tags (e.g., `v1.0.0`):
+- Builds multi-arch Docker images (amd64, arm64)
+- Publishes to GitHub Container Registry
+- Creates GitHub release with binaries
+- Packages Helm chart
+
+### Creating a Release
+
+```bash
+# Tag a release
+git tag v1.0.0
+git push origin v1.0.0
+
+# This triggers the release workflow which:
+# 1. Builds and pushes Docker image to ghcr.io
+# 2. Creates GitHub release with binaries
+# 3. Packages Helm chart
+```
+
 ## Development
 
 ### Project Structure
 
 ```
 kubeanalysis/
+├── .github/
+│   └── workflows/          # CI/CD pipelines
 ├── cmd/kubeanalysis/       # CLI entry point
+├── deploy/
+│   ├── grafana/            # Grafana dashboards and provisioning
+│   ├── helm/kubeanalysis/  # Helm chart
+│   ├── kustomize/          # Kustomize base and overlays
+│   ├── postgres/           # PostgreSQL init scripts
+│   └── prometheus/         # Prometheus configuration
 ├── internal/
 │   ├── analyzer/           # Security and performance analyzers
 │   ├── config/             # Configuration management
@@ -503,6 +661,8 @@ kubeanalysis/
 │   ├── server/             # HTTP server with graceful shutdown
 │   └── temporal/           # Temporal workflows and activities
 ├── knowledge/              # Knowledge base documents
+├── docker-compose.yaml     # Local development stack
+├── Dockerfile              # Multi-stage container build
 ├── Makefile
 └── README.md
 ```

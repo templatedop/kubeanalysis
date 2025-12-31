@@ -1,0 +1,54 @@
+KubeAnalysis has been deployed!
+
+1. Get the application URL by running:
+{{- if .Values.ingress.enabled }}
+{{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+{{- else if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "kubeanalysis.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+        You can watch the status of by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "kubeanalysis.fullname" . }}'
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "kubeanalysis.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo http://$SERVICE_IP:{{ .Values.service.port }}
+{{- else if contains "ClusterIP" .Values.service.type }}
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "kubeanalysis.fullname" . }} 8080:{{ .Values.service.port }}
+  echo "Visit http://127.0.0.1:8080"
+{{- end }}
+
+2. Check the health of the application:
+  kubectl --namespace {{ .Release.Namespace }} get pods -l "app.kubernetes.io/name={{ include "kubeanalysis.name" . }}"
+
+3. View logs:
+  kubectl --namespace {{ .Release.Namespace }} logs -l "app.kubernetes.io/name={{ include "kubeanalysis.name" . }}" -f
+
+4. Access endpoints:
+  - Health:    /health
+  - Liveness:  /live
+  - Readiness: /ready
+  - Metrics:   /metrics
+
+{{- if not .Values.temporal.enabled }}
+
+NOTE: Temporal is not enabled. Make sure you have a Temporal server running at:
+  {{ include "kubeanalysis.temporalHost" . }}
+
+You can start a local Temporal server with:
+  temporal server start-dev
+{{- end }}
+
+{{- if eq .Values.vectorStore.type "memory" }}
+
+NOTE: Using in-memory vector store. Data will not persist across restarts.
+For production, enable PostgreSQL:
+  helm upgrade {{ .Release.Name }} kubeanalysis \
+    --set postgresql.enabled=true \
+    --set vectorStore.type=postgres
+{{- end }}
+
+For more information, visit: https://github.com/kubeanalysis/kubeanalysis

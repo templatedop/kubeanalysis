@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubeanalysis-config
+  namespace: kubeanalysis
+data:
+  config.yaml: |
+    kubernetes:
+      kubeconfig: ""
+      context: ""
+      namespaces: []
+      exclude_namespaces:
+        - kube-system
+        - kube-public
+        - kube-node-lease
+      qps: 50
+      burst: 100
+
+    temporal:
+      host: "temporal-frontend:7233"
+      namespace: "default"
+      task_queue: "k8s-analysis-queue"
+      worker_count: 4
+      max_concurrent_activities: 10
+      max_concurrent_workflows: 10
+
+    llm:
+      provider: "ollama"
+      base_url: "http://ollama:11434"
+      model: "qwen2.5:32b"
+      max_tokens: 4096
+      temperature: 0.1
+      timeout: "120s"
+
+    embedder:
+      provider: "ollama"
+      base_url: "http://ollama:11434"
+      model: "nomic-embed-text"
+      dimension: 768
+      batch_size: 32
+
+    rag:
+      top_k: 10
+      min_score: 0.5
+      max_context_length: 8000
+      chunk_size: 1000
+      chunk_overlap: 200
+      knowledge_path: "/app/knowledge"
+
+    analysis:
+      interval: "15m"
+      types:
+        - security
+        - performance
+        - prediction
+      severity_threshold: "HIGH"
+      enable_predictions: true
+
+    logging:
+      level: "info"
+      format: "json"
+      output: "stdout"
+
+    alerting:
+      enabled: false

@@ -1,0 +1,294 @@
+# Default values for kubeanalysis
+# This is a YAML-formatted file.
+
+# Number of replicas
+replicaCount: 2
+
+# Image configuration
+image:
+  repository: kubeanalysis/kubeanalysis
+  pullPolicy: IfNotPresent
+  tag: ""  # Defaults to chart appVersion
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Service account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+  # RBAC permissions for cluster analysis
+  clusterRole: true
+
+# Pod annotations
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8080"
+  prometheus.io/path: "/metrics"
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+# Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: kubeanalysis.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: kubeanalysis-tls
+  #    hosts:
+  #      - kubeanalysis.local
+
+# Resource limits
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+# Horizontal Pod Autoscaler
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+  # maxUnavailable: 1
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: kubeanalysis
+          topologyKey: kubernetes.io/hostname
+
+# Liveness probe
+livenessProbe:
+  httpGet:
+    path: /live
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# Readiness probe
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Startup probe (for slow starting containers)
+startupProbe:
+  httpGet:
+    path: /live
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  failureThreshold: 30
+
+# Application configuration
+config:
+  # Kubernetes settings
+  kubernetes:
+    namespaces: []  # Empty means all namespaces
+    excludeNamespaces:
+      - kube-system
+      - kube-public
+      - kube-node-lease
+    qps: 50
+    burst: 100
+
+  # Temporal settings
+  temporal:
+    host: "temporal-frontend:7233"
+    namespace: "default"
+    taskQueue: "k8s-analysis-queue"
+    workerCount: 4
+    maxConcurrentActivities: 10
+    maxConcurrentWorkflows: 10
+
+  # LLM settings
+  llm:
+    provider: "ollama"
+    baseURL: "http://ollama:11434"
+    model: "qwen2.5:32b"
+    maxTokens: 4096
+    temperature: 0.1
+    timeout: "120s"
+
+  # Embedder settings
+  embedder:
+    provider: "ollama"
+    baseURL: "http://ollama:11434"
+    model: "nomic-embed-text"
+    dimension: 768
+    batchSize: 32
+
+  # RAG settings
+  rag:
+    topK: 10
+    minScore: 0.5
+    maxContextLength: 8000
+    chunkSize: 1000
+    chunkOverlap: 200
+    knowledgePath: "/app/knowledge"
+
+  # Analysis settings
+  analysis:
+    interval: "15m"
+    types:
+      - security
+      - performance
+      - prediction
+    severityThreshold: "HIGH"
+    enablePredictions: true
+
+  # Logging settings
+  logging:
+    level: "info"
+    format: "json"
+    output: "stdout"
+
+  # Rate limiting
+  rateLimit:
+    enabled: true
+    requestsPerSec: 10
+    burstSize: 20
+
+  # Server settings
+  server:
+    host: "0.0.0.0"
+    port: 8080
+    readTimeout: "30s"
+    writeTimeout: "30s"
+    shutdownTimeout: "30s"
+
+# Secret values (use external secrets in production)
+secrets:
+  # LLM API key (if using OpenAI/Anthropic)
+  llmApiKey: ""
+  # Embedder API key
+  embedderApiKey: ""
+
+# External secrets (for production use with External Secrets Operator)
+externalSecrets:
+  enabled: false
+  secretStore:
+    name: ""
+    kind: ClusterSecretStore
+  refreshInterval: "1h"
+  data: []
+    # - secretKey: llm-api-key
+    #   remoteRef:
+    #     key: kubeanalysis/llm-api-key
+
+# PostgreSQL for vector store (optional dependency)
+postgresql:
+  enabled: false
+  auth:
+    username: kubeanalysis
+    password: ""
+    database: kubeanalysis
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+    initdb:
+      scripts:
+        init.sql: |
+          CREATE EXTENSION IF NOT EXISTS vector;
+
+# Vector store configuration
+vectorStore:
+  type: "memory"  # memory or postgres
+  postgres:
+    # Use postgresql.enabled or external
+    url: ""  # postgres://user:pass@host:5432/db
+    tableName: "vector_chunks"
+    dimension: 768
+    maxConns: 10
+
+# Temporal (optional dependency)
+temporal:
+  enabled: false
+  # See temporal helm chart for configuration
+
+# ServiceMonitor for Prometheus Operator
+serviceMonitor:
+  enabled: false
+  namespace: ""
+  labels: {}
+  interval: 30s
+  scrapeTimeout: 10s
+  path: /metrics
+
+# Network Policy
+networkPolicy:
+  enabled: false
+  ingress: []
+  egress: []
+
+# Extra environment variables
+extraEnv: []
+  # - name: MY_VAR
+  #   value: "my-value"
+
+# Extra volumes
+extraVolumes: []
+  # - name: extra-config
+  #   configMap:
+  #     name: my-config
+
+# Extra volume mounts
+extraVolumeMounts: []
+  # - name: extra-config
+  #   mountPath: /etc/extra

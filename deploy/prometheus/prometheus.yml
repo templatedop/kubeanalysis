@@ -1,0 +1,28 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers: []
+
+rule_files: []
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # KubeAnalysis application
+  - job_name: 'kubeanalysis'
+    static_configs:
+      - targets: ['kubeanalysis:8080']
+    metrics_path: /metrics
+    scrape_interval: 10s
+
+  # Temporal server
+  - job_name: 'temporal'
+    static_configs:
+      - targets: ['temporal:7233']
+    metrics_path: /metrics
+    scrape_interval: 30s

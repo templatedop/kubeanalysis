@@ -1,0 +1,19 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kubeanalysis
+  namespace: kubeanalysis
+  labels:
+    app.kubernetes.io/name: kubeanalysis
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kubeanalysis
+  namespaceSelector:
+    matchNames:
+      - kubeanalysis
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s

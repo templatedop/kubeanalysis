@@ -1,0 +1,34 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Build artifacts
+bin/
+dist/
+
+# Test artifacts
+coverage.out
+*.test
+
+# Documentation
+*.md
+!README.md
+
+# Deployment (exclude from image build)
+deploy/
+helm/
+docker-compose*.yml
+
+# Local config
+config.yaml
+*.local.yaml
+
+# Kubernetes configs
+kubeconfig
+*.kubeconfig

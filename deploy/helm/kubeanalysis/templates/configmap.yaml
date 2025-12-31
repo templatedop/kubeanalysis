@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kubeanalysis.fullname" . }}
+  labels:
+    {{- include "kubeanalysis.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    kubernetes:
+      kubeconfig: ""
+      context: ""
+      namespaces: {{ toJson .Values.config.kubernetes.namespaces }}
+      exclude_namespaces: {{ toJson .Values.config.kubernetes.excludeNamespaces }}
+      qps: {{ .Values.config.kubernetes.qps }}
+      burst: {{ .Values.config.kubernetes.burst }}
+
+    temporal:
+      host: {{ include "kubeanalysis.temporalHost" . | quote }}
+      namespace: {{ .Values.config.temporal.namespace | quote }}
+      task_queue: {{ .Values.config.temporal.taskQueue | quote }}
+      worker_count: {{ .Values.config.temporal.workerCount }}
+      max_concurrent_activities: {{ .Values.config.temporal.maxConcurrentActivities }}
+      max_concurrent_workflows: {{ .Values.config.temporal.maxConcurrentWorkflows }}
+
+    llm:
+      provider: {{ .Values.config.llm.provider | quote }}
+      base_url: {{ .Values.config.llm.baseURL | quote }}
+      model: {{ .Values.config.llm.model | quote }}
+      max_tokens: {{ .Values.config.llm.maxTokens }}
+      temperature: {{ .Values.config.llm.temperature }}
+      timeout: {{ .Values.config.llm.timeout | quote }}
+
+    embedder:
+      provider: {{ .Values.config.embedder.provider | quote }}
+      base_url: {{ .Values.config.embedder.baseURL | quote }}
+      model: {{ .Values.config.embedder.model | quote }}
+      dimension: {{ .Values.config.embedder.dimension }}
+      batch_size: {{ .Values.config.embedder.batchSize }}
+
+    rag:
+      top_k: {{ .Values.config.rag.topK }}
+      min_score: {{ .Values.config.rag.minScore }}
+      max_context_length: {{ .Values.config.rag.maxContextLength }}
+      chunk_size: {{ .Values.config.rag.chunkSize }}
+      chunk_overlap: {{ .Values.config.rag.chunkOverlap }}
+      knowledge_path: {{ .Values.config.rag.knowledgePath | quote }}
+
+    analysis:
+      interval: {{ .Values.config.analysis.interval | quote }}
+      types: {{ toJson .Values.config.analysis.types }}
+      severity_threshold: {{ .Values.config.analysis.severityThreshold | quote }}
+      enable_predictions: {{ .Values.config.analysis.enablePredictions }}
+
+    logging:
+      level: {{ .Values.config.logging.level | quote }}
+      format: {{ .Values.config.logging.format | quote }}
+      output: {{ .Values.config.logging.output | quote }}
+
+    alerting:
+      enabled: false

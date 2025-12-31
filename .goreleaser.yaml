@@ -1,0 +1,117 @@
+# GoReleaser configuration
+version: 1
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: kubeanalysis
+    main: ./cmd/kubeanalysis
+    binary: kubeanalysis
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.buildTime={{.Date}}
+
+archives:
+  - id: kubeanalysis
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch
+
+release:
+  github:
+    owner: kubeanalysis
+    name: kubeanalysis
+  draft: false
+  prerelease: auto
+  mode: append
+  header: |
+    ## KubeAnalysis {{ .Tag }}
+
+    Kubernetes cluster analysis with RAG and Temporal workflows.
+  footer: |
+    ## Docker Images
+
+    ```bash
+    docker pull ghcr.io/kubeanalysis/kubeanalysis:{{ .Version }}
+    ```
+
+    ## Installation
+
+    ```bash
+    # Download binary
+    curl -LO https://github.com/kubeanalysis/kubeanalysis/releases/download/{{ .Tag }}/kubeanalysis_{{ .Version }}_linux_amd64.tar.gz
+    tar -xzf kubeanalysis_{{ .Version }}_linux_amd64.tar.gz
+    sudo mv kubeanalysis /usr/local/bin/
+
+    # Or use Helm
+    helm install kubeanalysis oci://ghcr.io/kubeanalysis/charts/kubeanalysis --version {{ .Version }}
+    ```
+
+dockers:
+  - image_templates:
+      - "ghcr.io/kubeanalysis/kubeanalysis:{{ .Version }}-amd64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .Commit }}"
+  - image_templates:
+      - "ghcr.io/kubeanalysis/kubeanalysis:{{ .Version }}-arm64"
+    dockerfile: Dockerfile
+    use: buildx
+    goarch: arm64
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .Commit }}"
+
+docker_manifests:
+  - name_template: "ghcr.io/kubeanalysis/kubeanalysis:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/kubeanalysis/kubeanalysis:{{ .Version }}-amd64"
+      - "ghcr.io/kubeanalysis/kubeanalysis:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/kubeanalysis/kubeanalysis:latest"
+    image_templates:
+      - "ghcr.io/kubeanalysis/kubeanalysis:{{ .Version }}-amd64"
+      - "ghcr.io/kubeanalysis/kubeanalysis:{{ .Version }}-arm64"
